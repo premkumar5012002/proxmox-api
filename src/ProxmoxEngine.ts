@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { type ApiRequestable } from "./proxy.js";
-import { fetch, RequestInit, Response } from 'undici';
+import { fetch, RequestInit, Response, Agent } from 'undici';
 import { URL } from "url";
 
 const USER_AGENT = 'proxmox-api (https://github.com/UrielCh/proxmox-api)'
@@ -24,6 +24,12 @@ const USER_AGENT = 'proxmox-api (https://github.com/UrielCh/proxmox-api)'
  * Common Proxmox authentification properties
  */
 export interface ProxmoxEngineOptionsCommon {
+    /**
+     * Verify TLS certificates.
+     * - `tlsVerify: true` validates server certificates (default).
+     * - `tlsVerify: false` disables certificate validation and should only be used with trusted self-signed Proxmox deployments.
+     */
+    tlsVerify?: boolean;
     /**
      * Proxmox address
      * currently used as hostname, so it can not contains a port number.
@@ -98,6 +104,8 @@ export class ProxmoxEngine implements ApiRequestable {
     private queryTimeout: number;
     private debug?: 'curl' | 'fetch';
     private fetch: FetchInterface;
+    private readonly tlsVerify: boolean;
+    private readonly dispatcher?: Agent;
 
     constructor(options: ProxmoxEngineOptions) {
         //if ((options as ProxmoxEngineOptionsToken).tokenID) {
@@ -134,6 +142,14 @@ export class ProxmoxEngine implements ApiRequestable {
         this.authTimeout = options.authTimeout || 5000;
         this.queryTimeout = options.queryTimeout || 60000;
         this.debug = options.debug;
+        this.tlsVerify = options.tlsVerify ?? true;
+        if (!this.tlsVerify) {
+            this.dispatcher = new Agent({
+                connect: {
+                    rejectUnauthorized: this.tlsVerify,
+                },
+            });
+        }
     }
 
     get host(): string {
@@ -202,7 +218,7 @@ export class ProxmoxEngine implements ApiRequestable {
             }
         }
         let res: Response | null = null;
-        const fetchInit: RequestInit = { method, body, headers };
+        const fetchInit: RequestInit = { method, body, headers, dispatcher: this.dispatcher };
 
         try {
             const controller = new AbortController();
@@ -323,7 +339,7 @@ export class ProxmoxEngine implements ApiRequestable {
             const id = setTimeout(() => controller.abort(), this.authTimeout);
             const method = 'POST';
             const { signal } = controller;
-            const r = await this.fetch(requestUrl, { method, headers, signal, body });
+            const r = await this.fetch(requestUrl, { method, headers, signal, body, dispatcher: this.dispatcher });
             clearTimeout(id);
             const text = await r.text();
             if (r.status !== 200) {

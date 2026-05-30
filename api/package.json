@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "clean": "rimraf esm/*.js esm/*.ts cjs/*.js",
+    "clean": "rimraf esm cjs",
     "prepack": "npm run build",
     "docs": "typedoc --entryPointStrategy expand",
     "build": "tsc --pretty --project . && tsc --pretty --project tsconfig-cjs.json",
